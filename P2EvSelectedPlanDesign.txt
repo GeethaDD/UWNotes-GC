@@ -1,0 +1,763 @@
+<apex:page sidebar="false" showHeader="true"  tabstyle="Opportunity" Controller="P2EcSelectedPlanDesign" id="page">
+
+    <apex:includeScript value="{!URLFOR($Resource.P2EResources, 'js/jquery.min.js')}"/>
+
+    <style>
+        .popup {
+            background-color: white;
+            border-width: 2px;
+            border-style: solid;
+            z-index: 9999;
+            left: 50%;
+            padding: 10px;
+            position: absolute;
+            width: 500px;
+            margin-left: -250px;
+            top: 80px;
+        }
+        .li {
+            display: block;
+            width: 90%;
+            height: 30px;
+            margin: 0;
+            padding: 10px 0 0 10px;
+        }
+        .header {
+            background-color: #2CA0C5;
+            border-color: #4d91b3;
+            font-size: 13px;
+            text-align: left;
+            font-weight: bold;
+            padding: 10px 0 0 15px;
+            color: #fff;
+            border-bottom: 3px solid #fff;
+        }
+        .nonLink {
+            background-color: #f3f3ec;
+            border-left: 5px solid #ccc;
+            border-bottom: 1px solid #ccc;
+            color: #ccc;
+        }
+        .currentLink {
+            background-color: rgb(214, 236, 242);
+            font-weight: bold;
+            color: #000;
+        }
+        .link {
+            background-color: #f3f3ec;
+            font-weight: bold;
+            border-left: 5px solid #2CA0C5;
+            border-bottom: 1px solid #2CA0C5;
+        }
+        .link a,
+        .link a:visited {
+            text-decoration: none;
+            color: #000;
+            display: block;
+            height: 30px;
+        }
+        .link a:hover {
+            text-decoration: none;
+            color: #2CA0C5;
+        }
+        .notActiveLink {
+            pointer-events: none;
+            cursor: default;
+            //text-decoration: none;
+        }
+        .activeLink {
+            color: #015ba7 !important
+        }
+        .error {
+            color: #FF3333;
+            font-size: 15px;
+            text-align: center;
+            background-color: #FFFFCC;
+            height: 30px;
+            border: solid;
+            border-color: #FFFFCC;
+            padding-top: 10px;
+        }
+        .greyout {
+            display: none;
+            position: absolute;
+            top: 0%;
+            left: 0%;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            z-index: 1001;
+            -moz-opacity: 0.6;
+            opacity: .60;
+            filter: alpha(opacity=60);
+        }
+        #showpopup {
+            display: none;
+            position: absolute;
+            top: 0%;
+            left: 0%;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            z-index: 1001;
+            -moz-opacity: 0.4;
+            opacity: .40;
+            filter: alpha(opacity=40);
+        }
+        .apexp .bPageBlock .detailList .list table td,
+        .apexp .bPageBlock .detailList .list table th {
+            border-bottom: 0px !important;
+        }
+        .labelBold {
+            font-weight: bold;
+        }
+        div[Id$='salesNotesRichText'] {
+            margin-top: 5px;
+        }
+        .spinnerBg {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            background-color: #000;
+            opacity: 0.6;
+            z-index: 999999;
+        }
+        .spinner {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            background-image: url("/img/loading32.gif");
+            background-size: 16px;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            background-position: center;
+            z-index: 9999999;
+            opacity: 1;
+        }
+    </style>
+
+    <script>
+        var $jq = $.noConflict();
+        window.onload = function() {
+            if (location.href.match(/inline=1/)) window.top.location = location.href.replace(/inline=1/, '');
+        }
+
+        function confirmAction(prod, dec) {
+            var answer = confirm("You are about to change the Decision Status. Are you sure?");
+
+            if (answer) {
+                updateProduct(prod, dec.value);
+            } else {
+                location.reload();
+            }
+        }
+
+        function checkSelected() {
+            var columnId = '{!$Component.form.pb.productTable}';
+            var productSelected = false;
+            for (var i = 0; i < 20; i++) {
+                var selectId = columnId + ':' + i + ':selectBox';
+                var selectValue = document.getElementById(selectId).checked;
+                if (selectValue) {
+                    productSelected = true;
+                }
+            }
+            //alert(productSelected);
+            if (productSelected) {
+                //alert(productSelected);
+                //var confirm = confirm('Do you want to delete the selected plan design(s)?');
+                if (confirm('Do you want to delete the selected plan design(s)?')) {
+                    removeProduct();
+                } else {
+                    return false;
+                }
+            } else {
+                alert('Please select atleast one product');
+                return false;
+            }
+            return false;
+        }
+
+        function bringPopup() {
+                if (confirm('Do you want to delete the selected plan design(s)?')) {
+                    document.getElementById('showpopup').style.display = 'Block';
+                } else {
+                    return false;
+                }
+            }
+            //Added for PC-12024
+        function WithdrawAction() {
+                var Withdraw;
+                Withdraw = confirm('This quote will be permanently withdrawn and associated records will be freeze. Do you want to proceed?');
+                if (Withdraw == true) {
+                    withdrawChanges();
+                    tSaveAndContinueButton('disable'); // edited by rajesh 12/09 - withdraw page refresh issue 
+                } else {
+                    return false;
+                }
+            }
+        //upto this for PC-12024     
+        //karthik for 12559
+        function DateAction(newAEDate, OldAE, BtValue) {
+
+            var NewAEDate1 = document.getElementById('{!$component.form.blockHeaderGI.quoteSection.call}').value;
+            var OldAEDate = OldAE;
+            var DSus;
+            if (NewAEDate1 == OldAEDate && BtValue == 'Re-Rate') {
+                DSus = confirm('Are you sure you want to keep the same due date for re-rate?');
+            } else {
+                document.getElementById('showpopup').style.display = 'Block';
+                pegaRFPRequest();
+                document.getElementById('blackout').style.display = 'none';
+            }
+            if (DSus == true) {
+                document.getElementById('showpopup').style.display = 'Block';
+                pegaRFPRequest();
+                document.getElementById('blackout').style.display = 'none';
+
+            } else {
+                return false;
+            }
+        }
+        
+        function openPopup(page,OppId,ttcaseId,rateChange,isTTChecked,quoteId,groupNum){
+            
+            var param ='';
+            if(quoteId !=null && quoteId !=''){
+                param +='&quoteId='+quoteId;
+            }
+            if(groupNum !=null && groupNum !=''){
+                param +='&groupNum='+groupNum;
+            }
+            if(ttcaseId !=null && ttcaseId !=''){
+                param +='&ttcaseId='+ttcaseId;
+            }
+            if(isTTChecked == 'false'){
+                alert('Please select Term & Transfer checkbox');
+            }else{
+                //var source = 'quotewizard';
+                //window.open(page+'?OppId='+OppId+'&ttcaseId='+ttcaseId+'&quoteId='+quoteId+'&rateChange='+rateChange+'&source='+source+'&group='+groupNum,'_blank', 'toolbar=yes, scrollbars=yes, resizable=yes, top=800, left=200, width=1000, height=600')
+                 window.open(page+'?OppId='+OppId+param+'&rateChange='+rateChange+'&Action=PopUp','_blank', 'toolbar=yes, scrollbars=yes, resizable=yes, top=800, left=200, width=1000, height=600')
+            }   
+        }
+
+    </script>
+
+    <div id="scriptPanel">
+        <script>
+
+            function tSaveAndContinueButton(flag) {
+                if (flag == 'enable') {
+                    document.getElementById('blackout').style.display = 'none';
+                } else if (flag == 'disable') {
+                    document.getElementById('blackout').style.display = 'block';
+                }
+
+                if ({!(cache.isRFPEnabled == true ||  salesNoteToDisplay.size != 0 || uwNoteToDisplay.size != 0)}) {<!--//modified for UWNotes-->
+                    $jq("div[Id$=NotesPB]").show();
+                } else {
+                    $jq("div[Id$=NotesPB]").hide();
+                }
+
+                if({!cache.isRFPEnabled}){
+                    $jq("label[id$=salesNotesLabel]").show()
+                    $jq("div[id$=salesNotesRichText]").show()
+                    $jq("input[id$=addSalesNotesButton]").show()
+                }else {
+                    $jq("label[id$=salesNotesLabel]").hide()
+                    $jq("div[id$=salesNotesRichText]").hide()
+                    $jq("input[id$=addSalesNotesButton]").hide()
+                }
+            }
+
+            function clearRichTextArea() {
+                document.getElementsByClassName('cke_wysiwyg_frame')[0].contentDocument.querySelector('[id$="salesNotesRichText_rta_body"]').innerText = '';
+            }
+
+            $jq(document).ready(function(){
+                tSaveAndContinueButton('enable');
+            });
+        </script>
+    </div>
+    <div id="showpopup"></div>
+    <!--// Modified by   : JAGAN
+        // Modified Date : 22-MARCH-2016
+        // HEAT TICKET  : 1727503 -->
+    <apex:form rendered="{!cache==null}">
+        <apex:pageMessages ></apex:pageMessages>
+    </apex:form>
+    <!--//Modified by   : JAGAN
+        // Modified Date : 22-MARCH-2016
+        // HEAT TICKET  : 1727503
+        // Checked null check for cache i.e cache !=null-->
+    <apex:form id="form" rendered="{!cache!= null}">
+
+        <apex:actionFunction name="pegaRFPRequest" action="{!pegaRFPRequest}"/>
+        <!-- Added for PC-12024 -->
+        <apex:actionFunction name="withdrawChanges" action="{!withdrawChanges}" />
+        <!-- Upto this Added for PC-12024 -->                
+        <apex:actionFunction name="updateProduct" action="{!soldProd}" rerender="op">
+            <apex:param name="prod" value=""/>
+            <apex:param name="dec" value=""/>
+        </apex:actionFunction>
+        <apex:actionFunction name="removeProduct" action="{!Remove}"/>
+
+
+        <div style="width:100%;padding:0 -10px;">
+
+            <!--******LEFT NAVIGATION******-->
+            <div id="leftNav" style="width:15%;float:left;padding:0;margin:2px 0 0 0;">
+                <ul style="width:100%;padding:0;margin:0;">
+                    <li class="li header">Quick Navigation</li>
+                    <apex:repeat value="{!cache.quickNaviMap}" var="navMap">
+                        <apex:outputPanel rendered="{!cache.quickNaviMap[navMap].isCurrentScreen}">
+                            <li class="li nonLink currentLink">
+                                <apex:outputText >{!cache.quickNaviMap[navMap].LinkName}</apex:outputText>
+                            </li>
+                        </apex:outputPanel>
+                        <apex:outputPanel rendered="{!IF(cache.quickNaviMap[navMap].isLinkActive && cache.quickNaviMap[navMap].pageId == 1, true, false)}">
+                            <li class="li link">
+                                <apex:commandLink immediate="true"  action="{!pageNavigate}" onclick="return confirm('Do you really want to abort this Quote Process and search for New Plan Design?');"  value="{!cache.quickNaviMap[navMap].LinkName}" >
+                                    <apex:param name="pageToId" value="{!cache.quickNaviMap[navMap].pageId}" assignTo="{!pageToId}" />
+                                    <apex:param name="pageToUrl" value="{!cache.quickNaviMap[navMap].LinkURL}" assignTo="{!pageToUrl}" />
+                                </apex:commandLink>
+                            </li>
+                        </apex:outputPanel>
+                        <apex:outputPanel rendered="{!IF(cache.quickNaviMap[navMap].isLinkActive && cache.quickNaviMap[navMap].pageId != 1, true, false)}">
+                            <li class="li link">
+                                <apex:commandLink immediate="true"  action="{!pageNavigate}" value="{!cache.quickNaviMap[navMap].LinkName}">
+                                    <apex:param name="pageToId" value="{!cache.quickNaviMap[navMap].pageId}" assignTo="{!pageToId}" />
+                                    <apex:param name="pageToUrl" value="{!cache.quickNaviMap[navMap].LinkURL}" assignTo="{!pageToUrl}" />
+                                    <apex:param name="selPlanId" value="{!cache.quickNaviMap[navMap].planId}" assignTo="{!selPlanId}"/>
+                                </apex:commandLink>
+                            </li>
+                        </apex:outputPanel>
+                        <apex:outputPanel rendered="{!!cache.quickNaviMap[navMap].isLinkActive && !cache.quickNaviMap[navMap].isCurrentScreen}">
+                            <li class="li nonLink">
+                                <apex:outputText >{!cache.quickNaviMap[navMap].LinkName}</apex:outputText>
+                            </li>
+                        </apex:outputPanel>
+                    </apex:repeat>
+                </ul>
+            </div>
+            <!--******LEFT NAVIGATION******-->
+
+
+            <div style="width:85%;float:left;padding:0;margin:2px 0 0 0;">
+                <apex:sectionHeader title="Request For Proposal" subtitle="Plan Design"/>
+
+                <!--******GENERAL INFORMATION, QUOTE INFORMATION SECTIONS & TOP LEVEL BUTTONS******-->
+                <apex:pageBlock id="blockHeaderGI" tabstyle="CostShare__c">
+                    <apex:pageBlockSection rendered="false" ></apex:pageBlockSection>
+                    <!--Dummy pageblocksection to inject the twistSection JS function -->
+                    <c:P2EcpAccountInformation id="componentGI" cache="{!cache}" rendered="{!cache != null}"></c:P2EcpAccountInformation>
+                    <!-- <script> twistSection(document.getElementById('{!$Component.form.blockHeaderGI.componentGI.GISection.blockSectionGI}').getElementsByTagName('img')[0]) </script>  -->
+                    <apex:pageBlockSection title="Quote Information" id="quoteSection">
+                        <apex:inputField value="{!cache.createdQuote.Name}"  rendered="{!cache.isRFPEnabled}"/>
+                        <apex:outputField value="{!cache.createdQuote.Name}"  rendered="{!!cache.isRFPEnabled}"/>
+                        <apex:outputField value="{!cache.createdQuote.RFP_Case_Status__c}"/>
+                        <apex:outputField value="{!cache.createdQuote.RFP_Case_Id__c}" />
+                        
+                        <apex:outputField value="{!ttcase.Term_And_Transfer__c}" rendered="{!(TTonLoad || isTTEnabled == false)}"/>
+                        <apex:pageBlockSectionItem rendered="{!(TTonLoad == false && isTTEnabled == true)}">
+                            <apex:outputlabel value="Term & Transfer" for="Term & Transfer" rendered="{!(TTonLoad == false && isTTEnabled == true)}"/>     
+                            <apex:actionRegion >
+                                <apex:inputField value="{!ttcase.Term_And_Transfer__c}" rendered="{!(TTonLoad == false && isTTEnabled == true)}">
+                                    <apex:actionSupport event="onchange" reRender="blockHeaderGI,pb" status="LoadingId1"/>
+                                </apex:inputField> 
+                                <apex:actionStatus id="LoadingId1">
+                                    <apex:facet name="start">
+                                        <img src="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/Loading1.gif')}" />
+                                    </apex:facet>
+                                </apex:actionStatus>
+                            </apex:actionRegion>
+                        </apex:pageBlockSectionItem>
+                        
+                        <!-- <apex:inputHidden /> -->
+                        <!-- <apex:pageBlockSectionItem ></apex:pageBlockSectionItem>     -->
+                        <apex:inputField value="{!cache.createdQuote.Date_Requested_by_AE__c}" id="call"  rendered="{!cache.isRFPEnabled}" required="true" >
+                            <apex:actionSupport action="{!mSaveQuote}" event="onchange" rerender="call" status="LoadingId2"/>
+                        </apex:inputField>
+                        <apex:outputField value="{!cache.createdQuote.Date_Requested_by_AE__c}" rendered="{!!cache.isRFPEnabled}"/>
+                        
+                        <apex:outputField id="EnrollmentDisabled" value="{!ttcase.Enrollment_Variation__c}" rendered="{!(cache.createdQuote.RFP_Case_Id__c != null || ttcase.Term_And_Transfer__c == false)}"/>
+                        <apex:pageBlockSectionItem rendered="{!AND(cache.createdQuote.RFP_Case_Id__c == null,ttcase.Term_And_Transfer__c)}">
+                            <apex:outputlabel value="10% Enrollment Increase/Reduction" for="10% Enrollment Increase/Reduction" rendered="{!AND(cache.createdQuote.RFP_Case_Id__c == null,ttcase.Term_And_Transfer__c)}"/>     
+                            <apex:actionRegion >
+                                    <apex:inputField id="EnrollmentEnabled" value="{!ttcase.Enrollment_Variation__c}" rendered="{!AND(cache.createdQuote.RFP_Case_Id__c == null,ttcase.Term_And_Transfer__c)}">   
+                                        <apex:actionSupport event="onchange" action="{!enableEnrollmentVariation}" reRender="TTLink" status="LoadingId3"/>
+                                    </apex:inputField>
+                                    <apex:actionStatus id="LoadingId3">
+                                        <apex:facet name="start">
+                                            <img src="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/Loading1.gif')}" />
+                                        </apex:facet>
+                                    </apex:actionStatus>
+                            </apex:actionRegion>
+                        </apex:pageBlockSectionItem>
+                        
+                        <apex:actionStatus id="LoadingId2">
+                            <apex:facet name="start">
+                                <img src="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/Loading1.gif')}" />
+                            </apex:facet>
+                        </apex:actionStatus>
+                        <apex:inputHidden rendered="{!cache.isRFPEnabled}"/>
+                        <apex:inputfield value="{!cache.createdQuote.Date_Requested_by_Group__c}" required="true" rendered="{!cache.isRFPEnabled}" />
+                        <apex:inputfield value="{!cache.createdQuote.Claims_Experience_Received__c}" rendered="{!cache.isRFPEnabled}"/>
+                        <apex:inputfield value="{!cache.createdQuote.Delivery_Type__c}" required="true" rendered="{!cache.isRFPEnabled}" />
+                        <!-- Added for 2-way communication -->
+                        <apex:pageBlockSectionItem rendered="{!cache.isRFPEnabled}">
+                            <apex:outputlabel value="Strategic Info Required for this proposal?" for="Strategic Info Required for this proposal?" rendered="{!cache.isRFPEnabled}" />
+                            <apex:actionRegion >
+                                <apex:inputField value="{!oppt.Strategic_Info_Required__c}" rendered="{!cache.isRFPEnabled}">
+                                    <apex:actionSupport event="onchange" reRender="strategicHeaderGI" status="LoadingSTId" />
+                                </apex:inputField>
+                                <apex:actionStatus id="LoadingSTId">
+                                    <apex:facet name="start">
+                                        <img src="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/Loading1.gif')}" />
+                                    </apex:facet>
+                                </apex:actionStatus>
+                            </apex:actionRegion>
+                        </apex:pageBlockSectionItem>
+                        <!-- Till here-->
+                        
+                        <!-- <apex:outputField value="{!cache.createdQuote.Date_Requested_by_AE__c}" rendered="{!!cache.isRFPEnabled}"/> -->
+                        <apex:inputHidden rendered="{!!cache.isRFPEnabled}"/>
+                        <apex:outputField value="{!cache.createdQuote.Date_Requested_by_Group__c}" rendered="{!!cache.isRFPEnabled}"/>
+                        <apex:outputField value="{!cache.createdQuote.Claims_Experience_Received__c}" rendered="{!!cache.isRFPEnabled}"/>
+                        <apex:outputField value="{!cache.createdQuote.Delivery_Type__c}" rendered="{!!cache.isRFPEnabled}"/>
+                        <apex:outputField label="Strategic Info Required for this proposal?" value="{!oppt.Strategic_Info_Required__c}" rendered="{!!cache.isRFPEnabled}"/>  <!-- Added for 2-way communication and Removed above line-->
+                        
+                    </apex:pageBlockSection>
+                    <!--<apex:pageBlockSection columns="1">
+                      <apex:outputText id="uwNotes" value="{!cache.createdQuote.UW_Notes__c}" escape="false"/> 
+                    </apex:pageBlockSection>commenetd for UWNotes-->
+                    <apex:pageBlockButtons location="top">
+                        <apex:actionStatus id="LoadingId0">
+                            <apex:facet name="start">
+                                <img src="{!URLFOR($Resource.LoadingImages, 'img/Loading3.gif')}" />
+                            </apex:facet>
+                        </apex:actionStatus>
+                        <apex:commandButton value="RFP" disabled="{!!cache.isRFPEnabled || cache.selectedopportunity.StageName == 'Declined To Quote (DTQ)'}"  rerender="scriptPanel,leftNav,blockHeaderGI,errorMessages,pb,Notes2,caseStatus,segmentPanel" onclick="tSaveAndContinueButton('disable'); document.getElementById(this.id).disabled = true; DateAction(this,'{!qt.Date_Requested_by_AE__c}','{!cache.wizardType}');" oncomplete="tSaveAndContinueButton('enable');"/>
+                        <!--- <apex:commandButton value="RFP" disabled="{!!cache.isRFPEnabled}" action="{!pegaRFPRequest}" rerender="form" onclick="document.getElementById(this.id).disabled = true;tSaveAndContinueButton('disable')" oncomplete="tSaveAndContinueButton('enable')"/>  -->
+                        <apex:commandButton value="{!ButtonValue}" disabled="{!!ButtonType || cache.selectedopportunity.StageName == 'Declined To Quote (DTQ)'}"  action="{!cloneQuote}"  onclick="tSaveAndContinueButton('disable')" oncomplete="tSaveAndContinueButton('enable')"/>
+                        <apex:commandButton value="WithDraw" disabled="{!!enableWithDraw || cache.selectedopportunity.StageName == 'Declined To Quote (DTQ)'}" rendered="{!($Profile.Name == 'System Administrator' || $Profile.Name == 'Business Administrator' || $Profile.Name == 'Developer')}" onclick="WithdrawAction();" oncomplete="tSaveAndContinueButton('enable');" rerender="scriptPanel,leftNav,blockHeaderGI,errorMessages,pb,Notes2,caseStatus,segmentPanel"/>
+                        <!--edited by rajesh 12/09 - withdraw page refresh issue --><!-- Modified for PC-12024 -->
+                        <!--<apex:commandButton action="{!sendRegretNote}" value="Send Regret Note" reRender="form" rendered="{!(cache.selectedOpportunity.Type = 'New' && qt.Status!='Withdrawn')}" disabled="{!disableRegretNote}"/>-->
+                        <apex:commandButton action="{!sendRegretNote}" value="Send Regret Note" reRender="scriptPanel,leftNav,blockHeaderGI,errorMessages,pb,Notes2,caseStatus,segmentPanel" rendered="{!(cache.selectedOpportunity.Type = 'New' && qt.Status!='Withdrawn')}" disabled="{!!ShowRegretNote || cache.selectedopportunity.StageName == 'Declined To Quote (DTQ)'}" oncomplete="tSaveAndContinueButton('enable');"/>
+                    </apex:pageBlockButtons>
+                </apex:pageBlock>
+                <!--******GENERAL INFORMATION, QUOTE INFORMATION SECTIONS & TOP LEVEL BUTTONS******-->
+
+                <!--******ERROR MESSAGES******-->
+                <apex:pagemessages id="errorMessages" ></apex:pagemessages>
+                <!--******ERROR MESSAGES******-->
+
+                <apex:actionRegion >
+
+                    <!--******SELECTED PLAN DESIGN SECTION******-->
+                    <apex:pageBlock id="pb" title="Selected Plan Designs" tabstyle="CostShare__c">
+                        <apex:pageBlockButtons location="top">
+                            <apex:commandButton value="Add Product" action="{!addProduct}" rendered="{!cache.createdQuote.RFP_Case_Id__c = NULL && (cache.selectedOpportunity.StageName != 'Closed' || cache.selectedOpportunity.StageName != 'Closed Withdrawn') && qt.Status!='Withdrawn'}" immediate="true"/>
+                            &nbsp;&nbsp;&nbsp;
+                            <apex:commandButton value="Go to Opportunity" rendered="{!(cache.createdQuote.RFP_Case_Id__c!=null)}"  oncomplete="window.top.location='/{!cache.selectedOpportunity.id}'; return false"/>
+                            <!-- The clone button needs to be available for only new sale process. Modified for PC-12691 by Parthi -->
+                            <apex:commandButton value="Clone"  reRender="scriptPanel,leftNav,blockHeaderGI,errorMessages,pb,Notes2,caseStatus,segmentPanel" action="{!cloneSelectedProduct}" onclick="tSaveAndContinueButton('disable')" oncomplete="tSaveAndContinueButton('enable');" rendered="{!(cache.createdQuote.RFP_Case_Id__c = NULL && cache.allPlanIds.size != 0 && cache.selectedOpportunity.Type = 'New' && (cache.selectedOpportunity.StageName != 'Closed' || cache.selectedOpportunity.StageName != 'Closed Withdrawn') && qt.Status!='Withdrawn')}">
+                                <apex:param assignTo="{!isChange}" value="false"/>
+                            </apex:commandButton>
+                            <!-- Removed the Change logic for PC-12691 by Parthi
+                                <apex:commandButton value="Change" reRender="form" action="{!cloneSelectedProduct}" onclick="tSaveAndContinueButton('disable')" oncomplete="tSaveAndContinueButton('enable')"  rendered="{! cache.allPlanIds.size != 0 && (cache.selectedOpportunity.Type = 'Renewal' || cache.selectedOpportunity.Type = 'Change') &&  cache.createdQuote.RFP_Case_Id__c = NULL && (cache.selectedOpportunity.StageName != 'Closed' || cache.selectedOpportunity.StageName != 'Closed Withdrawn') && qt.Status!='Withdrawn'}">
+                                    <apex:param assignTo="{!isChange}" value="true"/>
+                                </apex:commandButton>
+                                -->
+                            <apex:actionStatus id="LoadingId2">
+                                <apex:facet name="start">
+                                    <img src="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/Loading1.gif')}" />
+                                </apex:facet>
+                            </apex:actionStatus>
+                        </apex:pageBlockButtons>
+
+                        <apex:outputLabel value="No records to display" style="color:red" rendered="{!cache.allPlanIds.size = 0}"></apex:outputLabel>
+                        
+                        <apex:variable var="rowNumber" value="{!1}"/>
+                        <apex:pageBlockTable value="{!cache.allPlanIds}" var="pds" id="productTable" rendered="{!cache.allPlanIds.size != 0}">
+                            <apex:column headerValue="Select" id="selectColumn">
+                                <apex:inputcheckbox id="selectBox" value="{!cache.allPlansMap[pds].selected}"/>
+                            </apex:column>
+                            <apex:column rendered="{!(cache.selectedOpportunity.StageName != 'Closed' || cache.selectedOpportunity.StageName != 'Closed Withdrawn') && qt.Status!='Withdrawn'}">
+                                <apex:commandLink value="Discontinue" styleClass="activeLink" action="{!Remove}" onclick="return confirm('Do you want to discontinue {!cache.allPlansMap[pds].planName} plan design?');" rendered="{!((cache.allPlansMap[pds].action = 'Existing') && (cache.createdQuote.RFP_Case_Id__c = Null) && (cache.allPlansMap[pds].isNegotiated = false))}" >
+                                    <!-- rendered="{!((cache.allPlansMap[pds].action != 'Delete') && (cache.selectedOpportunity.Type !='Renewal'))}" > -->
+                                    <apex:param name="selProdId" value="{!cache.allPlansMap[pds].productId}" assignTo="{!cache.selProdId}"/>
+                                </apex:commandLink>
+                                <!--<apex:commandLink value="Delete" styleClass="activeLink" action="{!Remove}" onclick="return confirm('Do you want to delete {!cache.allPlansMap[pds].planName} plan design?');" rendered="{!(((cache.allPlansMap[pds].action = 'New') || (cache.allPlansMap[pds].action ='Update'))&&(cache.createdQuote.RFP_Case_Id__c = Null)&&(cache.allPlansMap[pds].isNegotiated = false))}">-->
+                                <apex:commandLink value="Delete" styleClass="activeLink" action="{!Remove}" onclick="return bringPopup();" rendered="{!(((cache.allPlansMap[pds].action = 'New') || (cache.allPlansMap[pds].action ='Update'))&&(cache.createdQuote.RFP_Case_Id__c = Null)&&(cache.allPlansMap[pds].isNegotiated = false))}" >
+                                    <apex:param name="selProdId" value="{!cache.allPlansMap[pds].productId}" assignTo="{!cache.selProdId}"/>
+                                </apex:commandLink>
+                            </apex:column>
+                            <apex:column id="TTLink">
+                                <apex:commandLink value="Term & Transfer" styleClass="notActiveLink" id="TTInactiveLink" rendered="{!(ttcase.Term_And_Transfer__c == false || isTTEnabled == false) && ((cache.allPlansMap[pds].action == 'Existing' && (cache.selectedOpportunity.Type =='Renewal' || cache.selectedOpportunity.Type =='Change'))||(cache.allPlansMap[pds].action == 'New' && cache.selectedOpportunity.Type =='New'))}"/>  
+                                <apex:commandLink value="Term & Transfer" styleClass="activeLink" onclick="openPopup('{!$Page.P2EvTermAndTransferDetails}','{!OppId}','{!ttcaseId}','{!ttcase.Enrollment_Variation__c}','{!ttcase.Term_And_Transfer__c}','{!quoteId}','{!cache.allPlansMap[pds].GroupNumber}');" id="TTActiveLink" rerender="xxx" rendered="{!(ttcase.Term_And_Transfer__c && isTTEnabled && ((cache.allPlansMap[pds].action == 'Existing' && (cache.selectedOpportunity.Type =='Renewal' || cache.selectedOpportunity.Type =='Change'))||(cache.allPlansMap[pds].action == 'New' && cache.selectedOpportunity.Type =='New')))}">  
+                                    <apex:param name="selttgroup" value="{!cache.allPlansMap[pds].GroupNumber}" assignTo="{!selTTGroup}"/>
+                                </apex:commandLink>
+                            </apex:column>
+                            <!---    <apex:column > 
+                                <apex:commandLink value="Delete" styleClass="activeLink" action="{!Remove}" onclick="return confirm('Do you want to delete {!cache.allPlansMap[pds].planName} plan design?');" rendered="{!(((cache.allPlansMap[pds].action = 'New') || (cache.allPlansMap[pds].action ='Update'))&&(cache.createdQuote.RFP_Case_Id__c = Null)&&(cache.allPlansMap[pds].isNegotiated = false))}" >
+                                    <apex:param name="selProdId" value="{!cache.allPlansMap[pds].productId}" assignTo="{!cache.selProdId}"/>
+                                </apex:commandLink>
+                                </apex:column>          ---->    
+                            <apex:column headerValue="Plan Design" rendered="{!(cache.selectedOpportunity.StageName != 'Closed' || cache.selectedOpportunity.StageName != 'Closed Withdrawn') && qt.Status!='Withdrawn'}">
+                                <apex:commandLink value="{!cache.allPlansMap[pds].planName}" action="{!Edit}" immediate="true">
+                                    <apex:param name="selProdId" value="{!cache.allPlansMap[pds].productId}" assignTo="{!cache.selProdId}"/>
+                                </apex:commandLink>
+                            </apex:column>
+                            <apex:column headerValue="Plan Design" rendered="{!cache.selectedOpportunity.Workflow_Stage__c == 'Closed Withdrawn' || qt.Status=='Withdrawn'}">
+                                <apex:outputText value="{!cache.allPlansMap[pds].planName}"/>
+                            </apex:column>
+                            <apex:column headerValue="Plan ID" value="{!pds}"/>
+                            <!--  Added by Murali for Missing BP Solution(PC-15498) on Sep 27 - Start --> 
+                            <apex:column headerValue="Group Plan Name" value="{!ProdBPNameMap[pds]}"/>
+                            <apex:column headerValue="Benefit Packages">
+                                <apex:variable value="{!ProdBPMap[pds]}"  var="BPIdList"/  >
+                                <apex:outputText value="{!ProdBPMap[pds][0]}" rendered="{!(BPIdList!=NULL && BPIdList.size > 0)}"/>
+                                <apex:CommandLink value="..." action="{!getBPList}" rendered="{!(BPIdList!=NULL && BPIdList.size > 1)}" style="text-decoration: none;padding:3px;font-weight: bold;" rerender="popup" onclick="popupBg('disable')">
+                                    <apex:param name="selectedPrd" value="{!cache.allPlansMap[pds].planId}" assignTo="{!selPlanIdN}"/>
+                                </apex:commandLink>
+                            </apex:column>
+                            <!-- PC-15498 End --> 
+                            <apex:column headerValue="OSR">
+                                <!--added by geetha for PC-13674 on Nov 24-->        
+                                <apex:image title="OSR Plan" value="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/tick.png')}" width="12px" height="12px" rendered="{!(cache.allPlansMap[pds].isOSRPlan)}"/>
+                            </apex:column>
+                            <!--Till here for 13674-->                        
+                            <!--<apex:column headerValue="OSR Plan ID" value="{!cache.allPlansMap[pds].OsrPlanId}"/>-->
+                            <apex:column headerValue="Plan Design Name">
+                                <apex:outputText value="{!cache.allPlansMap[pds].selectedTemplate} - {!cache.allPlansMap[pds].contractType} -" />
+                                <apex:outputText value="{0,number,#,##0}">
+                                    <apex:param value="{!cache.allPlansMap[pds].individualLifetimeMax}"/>
+                                </apex:outputText>
+                                <apex:outputText value=" - {!cache.allPlansMap[pds].deductible}"/>
+                            </apex:column>
+                            <apex:column value="{!cache.allPlansMap[pds].GroupNumber}" headerValue="Group Number" rendered="{!cache.selectedOpportunity.type != 'New'}"/>
+                            <apex:column value="{!cache.allPlansMap[pds].status}" headerValue="Status"/>
+                            <apex:column headerValue="Offered?" >
+                                <apex:image title="Offered" value="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/tick.png')}" width="12px" height="12px" rendered="{!cache.allPlansMap[pds].isOffered}"/>
+                            </apex:column>
+                            <apex:column headerValue="Decision Status" rendered="{!(cache.createdQuote.RFP_Case_Status__c == 'Resolved-Completed' && (cache.selectedOpportunity.StageName != 'Closed' || cache.selectedOpportunity.StageName != 'Closed Withdrawn') && qt.Status!='Withdrawn')}" >
+                                <apex:outputpanel id="op">
+                                    <!-- apex:inputText value="{!cache.allPlansMap[pds].DecisionStatus}" id="soldField" onchange="confirmAction();" rendered="{!(cache.allPlansMap[pds].decision == 'Decision Pending')}" required="true"/ -->
+                                    <apex:selectList value="{!cache.allPlansMap[pds].decision}" size="1" onchange="confirmAction('{!cache.allPlansMap[pds].productId}',this);" rendered="{!(cache.allPlansMap[pds].decision == 'Decision Pending' && cache.selectedOpportunity.Type != 'New')}" required="true">
+                                        <apex:selectOptions value="{!cache.allPlansMap[pds].DecisionStatus}"/>
+                                    </apex:selectList>
+                                    <apex:selectList value="{!cache.allPlansMap[pds].decision}" size="1" onchange="confirmAction('{!cache.allPlansMap[pds].productId}',this);" rendered="{!(cache.allPlansMap[pds].decision == 'Decision Pending' && cache.selectedOpportunity.Type == 'New')}" required="true">
+                                        <apex:selectOptions value="{!cache.allPlansMap[pds].ReleasedBySales}"/>
+                                    </apex:selectList>
+                                    <apex:outputText value="{!cache.allPlansMap[pds].decision}" rendered="{!(cache.allPlansMap[pds].decision != 'Decision Pending')}"/>
+                                </apex:outputpanel>
+                            </apex:column>
+                            <apex:column headerValue="Current Plan?" >
+                                <!-- <apex:image title="Offered" value="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/tick.png')}" width="12px" height="12px" rendered="{!cache.allPlansMap[pds].isCurrentPlan}"/> -->
+                                <apex:image title="Offered" value="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/tick.png')}" width="12px" height="12px" rendered="{!(cache.allPlansMap[pds].action == 'Existing' ||cache.allPlansMap[pds].isCurrentPlan = true || cache.allPlansMap[pds].action == 'Discontinue')}"/>
+                            </apex:column>
+                            <apex:column headerValue="Rate" rendered="{!((cache.selectedOpportunity.StageName != 'Closed' || cache.selectedOpportunity.StageName != 'Closed Withdrawn') && qt.Status!='Withdrawn')}">
+                                <apex:commandLink value="View" action="{!viewRate}" rendered="{!(cache.allPlansMap[pds].RFPRateGenerated)}">
+                                    <apex:param name="selProdId" value="{!cache.allPlansMap[pds].productId}" assignTo="{!cache.selProdId}"/>
+                                </apex:commandLink>
+                                <apex:outputText value="Not rated by UW" rendered="{!(((!cache.allPlansMap[pds].RFPRateGenerated))) && (cache.createdQuote.RFP_Case_Status__c == 'Completed' || cache.createdQuote.RFP_Case_Status__c == 'Resolved-Completed')}"></apex:outputText>
+                            </apex:column>
+                            <apex:column headerValue="Action" value="{!cache.allPlansMap[pds].action}" />
+                            <!-- AS PER PC-9132--DATE : NOV -15-2015 >
+                                <!--<apex:column headerValue="Freeze">
+                                    <apex:image title="Offered" value="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/tick.png')}" width="12px" height="12px" rendered="{!cache.allPlansMap[pds].freezed}"/>
+                                </apex:column>-->
+                        </apex:pageBlockTable>
+                    </apex:pageBlock>
+                    <!--******SELECTED PLAN DESIGN SECTION******-->
+
+                </apex:actionRegion>
+
+                <!--******STRATEGIC INFORMATION SECTION******--> <!-- Added this section for 2-way communication -->
+                <apex:pageBlock id="strategicHeaderGI" tabstyle="CostShare__c">
+                
+                    <apex:pageBlockSection title="Strategic Information" id="strategicSection" collapsible="true" rendered="{!(cache.isRFPEnabled == true)}">
+                        <apex:inputField value="{!oppt.Priority_1__c}" required="{!oppt.Strategic_Info_Required__c}"/>
+                        <apex:inputfield value="{!oppt.Priority_4__c}" required="{!oppt.Strategic_Info_Required__c}" />
+                        <apex:inputfield value="{!oppt.Priority_2__c}" required="{!oppt.Strategic_Info_Required__c}" />
+                        <apex:inputfield value="{!oppt.Priority_5__c}" required="{!oppt.Strategic_Info_Required__c}" />
+                        <apex:inputfield value="{!oppt.Priority_3__c}" required="{!oppt.Strategic_Info_Required__c}" />
+                        <apex:inputHidden />
+                        <apex:inputfield value="{!oppt.Strategic_Pricing_Recommendations__c}" required="{!oppt.Strategic_Info_Required__c}" style="width: 190px"/>
+                    </apex:pageBlockSection>
+                    <apex:pageBlockSection title="Strategic Information" id="strategicReadSection" collapsible="true" rendered="{!(cache.isRFPEnabled == false && oppt.Strategic_Info_Required__c == true)}">
+                        <apex:outputField value="{!oppt.Priority_1__c}"/>
+                        <apex:outputField value="{!oppt.Priority_4__c}"/>
+                        <apex:outputField value="{!oppt.Priority_2__c}"/>
+                        <apex:outputField value="{!oppt.Priority_5__c}"/>
+                        <apex:outputField value="{!oppt.Priority_3__c}"/>
+                        <apex:inputHidden />
+                        <apex:outputField value="{!oppt.Strategic_Pricing_Recommendations__c}" style="width: 190px"/>
+                    </apex:pageBlockSection>
+                </apex:pageBlock>
+                <!--****** STRATEGIC INFORMATION SECTION ******-->
+                
+                <!--******NOTES SECTION******-->
+                <apex:pageBlock id="NotesPB" title="Notes" tabstyle="CostShare__c" rendered="{!(cache.isRFPEnabled == true ||  salesNoteToDisplay.size != 0 || uwNoteToDisplay.size != 0)}"><!--modified rendered for UWNotes-->
+                    <apex:pageBlockSection id="Notes" columns="1" >
+                        <apex:pageblockSectionItem id="notesItem">
+                            <apex:actionRegion >
+                                <apex:outputLabel id="salesNotesLabel" styleClass="labelBold" rendered="{!cache.isRFPEnabled}">Sales Notes</apex:outputLabel>
+                                <apex:inputTextarea id="salesNotesRichText" value="{!salesNotes}" richText="true" cols="170" rows="10" rendered="{!cache.isRFPEnabled}"/>
+                                <apex:commandButton id="addSalesNotesButton" value="Add" style="margin-left:43%;margin-top:0.8%;" action="{!addNotes}" reRender="Notes2,errorMessages" oncomplete="clearRichTextArea();" rendered="{!cache.isRFPEnabled}" status="spinnerStatus"/>
+                            </apex:actionRegion>
+                        </apex:pageblockSectionItem>
+                        <!-- <apex:outputLabel rendered="{!noteToDisplay.size != 0}" value="Please Expand Notes History to view Notes" ></apex:outputLabel> -->
+                        <!--@Jaleel - 10122017 - Rich Text Area Changes-->
+                        <!--<apex:pageBlockSection rendered="false"></apex:pageBlockSection>
+                            <apex:pageBlockSection id="Notes2" title="Notes History" columns="1" rendered="{!noteToDisplay.size != 0 }" >
+                                   <apex:pageblockTable value="{!noteToDisplay}" var="n" id="noteTable" >
+                                       <apex:column headerValue="Description" value="{!n.Body}"/>
+                                       <apex:column headerValue="Created By" value="{!n.CreatedBy.name}" />
+                                       <apex:column headerValue="Created Date" value="{!n.CreatedDate}"/>
+                                   </apex:pageblockTable>
+                                  </apex:pageBlockSection> 
+                             </apex:pageBlockSection>-->
+                        <apex:outputPanel id="Notes2">
+                            <apex:pageBlockSection id="Notes21" title="Sales Notes History" columns="1" rendered="{!salesNoteToDisplay.size != 0 }" ><!--modified rendered for UWNotes-->
+                                <apex:pageblockTable value="{!salesNoteToDisplay}" var="n" id="salesnoteTable" >
+                                    <apex:column headerValue="Description" value="{!n.Implementation_Notes__c}"/>
+                                    <apex:column headerValue="Created By" value="{!n.CreatedBy.name}" />
+                                    <apex:column headerValue="Created Date" value="{!n.CreatedDate}"/>
+                                </apex:pageblockTable>
+                            </apex:pageBlockSection>
+                        </apex:outputPanel>
+                        <apex:outputPanel id="Notes3"><!--UWNotes Start-->
+                            <apex:pageBlockSection id="Notes22" title="UW Notes History" columns="1" rendered="{!uwNoteToDisplay.size != 0 }" >
+                                <apex:pageblockTable value="{!uwNoteToDisplay}" var="n1" id="uwnoteTable" >
+                                    <apex:column headerValue="Description" value="{!n1.UW_Notes__c}"/>
+                                    <apex:column headerValue="Created By" value="{!n1.UW_Notes_UserName__c}" />
+                                    <apex:column headerValue="Created Date" value="{!n1.UW_Notes_Created_Date__c}"/>
+                                </apex:pageblockTable>
+                            </apex:pageBlockSection>
+                        </apex:outputPanel><!--UWNotes End-->
+                    </apex:pageBlockSection>
+                    <!--@Jaleel - 10122017 - End of Rich Text Area Changes-->
+                </apex:pageBlock>
+                <!--******NOTES SECTION******-->
+
+                <!--******PEGA IFRAME SECTION******-->
+                <div id="caseStatus">
+                    <apex:pageBlock title="Case Status" tabstyle="CostShare__c" rendered="{!IF(cache.createdQuote.RFP_Case_Id__c!=null, true, false)}">
+                        <iframe src="{!PegaIFrameURL}" width="100%" height="250px"/>
+                    </apex:pageBlock>
+                </div>
+                <!--******PEGA IFRAME SECTION******-->
+
+                <!--******ADD SEGMENTS SECTION******-->
+                <div id="segmentPanel">
+                    <apex:pageBlock tabstyle="CostShare__c" id="segmentBlock" rendered="{!(enableSegmentSection && cache.createdQuote.RFP_Case_Id__c==null && qt.Status!='Withdrawn')}">
+                        <apex:pageBlockSection title="Add Segments"  >
+                            <apex:outputPanel >
+                                <apex:outputText style="font-weight: bold;font-size:91%;color:#4A4A56;margin-left:90px" value="Select Segment" ></apex:outputText>
+                                <apex:selectList value="{!selectedSegment}" multiselect="false"  size="1" style="margin-left:25px">
+                                    <apex:selectOptions value="{!segmentNameList}"></apex:selectOptions>
+                                </apex:selectList>
+                                <apex:actionSupport action="{!renderSegment}" event="onchange" reRender="segmentBlock,errorMessages" status="LoadingId2"/>
+                                <apex:actionStatus id="LoadingId2">
+                                    <apex:facet name="start">
+                                        <img src="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/Loading1.gif')}" />
+                                    </apex:facet>
+                                </apex:actionStatus>
+                            </apex:outputPanel>
+                            <c:MultiselectPicklist leftLabel="Available Plan Designs"
+                                leftOptions="{!availableProducts}"
+                                rightLabel="Selected Plan Designs"
+                                rightOptions="{!selectedProducts}"
+                                size="5"
+                                width="150px"/>
+                            <apex:outputField value="{!cache.selectedAccount.NumberOfEmployees}" />
+                            <apex:outputField value="{!cache.selectedOpportunity.Eligible_Primary_Enrollees__c}" />
+                            <!--apex:outputField value="{!cache.selectedAccount.Number_of_Eligible_Employees__c}"/-->    
+                            <apex:inputField value="{!segment.Number_of_Total_Employees_for_Segments__c}"/>
+                            <apex:inputField value="{!segment.Number_of_Eligible_Employees_for_Segment__c}"/>
+                        </apex:pageBlockSection>
+                        <apex:pageBlockButtons location="bottom">
+                            <apex:actionStatus id="LoadingId2">
+                                <apex:facet name="start">
+                                    <img src="{!URLFOR($Resource.P2E, '/P2E/P2EStaticResources/Loading1.gif')}" />
+                                </apex:facet>
+                            </apex:actionStatus>
+                            <apex:commandButton value="Add" rerender="errorMessages" onclick="tSaveAndContinueButton('disable')" oncomplete="tSaveAndContinueButton('enable')"  action="{!addSegment}" />
+                        </apex:pageBlockButtons>
+                    </apex:pageBlock>
+                    <apex:actionRegion >
+                        <apex:outputPanel id="Panel1">
+                            <apex:pageBlock id="block2" tabStyle="CostShare__c" title="Segments" rendered="{!If(enableSegmentSection && qt.Status!='Withdrawn',true,false)}"  >
+                                <apex:pageBlockTable value="{!prodSegCloneList}"  var="prodSegment" rendered="{!prodSegCloneList != null && prodSegCloneList.size>0}">
+                                    <apex:column headerValue="Action" >
+                                        <apex:commandLink action="{!delRow}" reRender="block2"  value="Delete" immediate="true" oncomplete="location.reload();"   >
+                                            <apex:param name="segid"  value="{!prodSegment.Segment.id}" assignTo="{!segsids}"/>
+                                            <apex:param name="pr" value="{!prodSegment.product.id}" assignTo="{!pro}"/>
+                                        </apex:commandLink>
+                                    </apex:column>
+                                    <apex:column headerValue="Segment" width="25%" value="{!prodSegment.Segment.Name}"/>
+                                    <apex:column headerValue="Plan Design" width="25%" value="{!prodSegment.product.name}"/>
+                                    <apex:column headerValue="Group Number" width="25%" value="{!cache.allPlansMap[prodSegment.product.PlanID__c].GroupNumber}" rendered="{!cache.selectedOpportunity.type != 'New'}"/>
+                                    <apex:column width="32%" value="{!prodSegment.Segment.Number_of_Eligible_Employees_for_Segment__c}"/>
+                                    <!-- apex:column width="32%" headerValue="Buy up">
+                                        <apex:inputCheckbox value="{!prodSegment.buyup}"/>
+                                        </apex:column -->
+                                </apex:pageBlockTable>
+                                <apex:outputText value="No Segments Exist" style="color:red" rendered="{!prodSegments.size = 0}"></apex:outputText>
+                                <apex:commandLink action="{!getPreviousSet}" rerender="Panel1" value="< Previous" rendered="{!offsetVal != 0}"/>
+                                &nbsp;
+                                <apex:commandLink action="{!getNextSet}" rerender="Panel1" value="Next >" rendered="{!(limitval != null && proSegListSize!= null && limitval<proSegListSize)}"/>
+                                &nbsp; 
+                            </apex:pageBlock>
+                        </apex:outputPanel>
+                    </apex:actionRegion>
+                </div>
+                <!--******ADD SEGMENTS SECTION******-->
+
+            </div>
+        </div>
+        <div id="blackout" class="greyout">
+            <p style="color:white;text-align:center;font-size:150%">Your request is in progress. Please wait for some time....</p>
+        </div>
+    </apex:form>
+    <!-- Added by Murali for Missing BP Solution(PC-15498) on 9/28/17 - Start -->
+    <div id="light">
+        <apex:form >
+            <script>
+                function popupBg(flag){      
+                      if(flag=='enable'){       
+                      document.getElementById('blackout1').style.display='none';             
+                      }     
+                      else if(flag=='disable'){     
+                          document.getElementById('blackout1').style.display='block';        
+                      }     
+                  }
+            </script>
+            <apex:outputPanel id="popup" >
+                <apex:outputPanel layout="block" styleClass="popup" rendered="{!displayPopUp}">
+                    <apex:pageBlock title="Benefit Packages" tabstyle="CostShare__c" rendered="{!displayPopUp}">
+                        <apex:commandButton value="X" action="{!closePopup}" style="float:right;" rerender="popup" oncomplete="popupBg('enable')"/>
+                        <apex:pageBlockTable value="{!prdBenLst}" var="prdBens" id="productTable1" rendered="{!prdBenLst.size != 0}">
+                            <apex:column headerValue="Benefit Package Id">
+                                <apex:outputText value="{!prdBens}"/>
+                            </apex:column>
+                        </apex:pageBlockTable>
+                    </apex:pageBlock>
+                    <br/>
+                </apex:outputPanel>
+            </apex:outputPanel>
+        </apex:form>
+    </div>
+    <!-- PC-15498 End -->
+    <div id="blackout1" class="greyout"/>
+    <apex:actionStatus id="spinnerStatus">
+      <apex:facet name="start">
+        <div class="spinnerBg" />
+        <div class="spinner" ><p style="color:white;text-align:center;font-size:150%">Your request is in progress. Please wait for some time....</p></div>
+      </apex:facet>
+    </apex:actionStatus>
+</apex:page>
